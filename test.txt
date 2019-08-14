@@ -5,6 +5,9 @@ only press git pull then git push
 its a good answer
 
 
-测试一下从pycharm推到github中
+测试一下从pycharm推到github中 成功
 
-测试一下从bash推到github中
+测试一下从bash推到github中 成功
+
+结束测试
+
