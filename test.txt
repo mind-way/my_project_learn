@@ -1,5 +1,10 @@
-very good!
+﻿very good!
+
 only press git pull then git push
+
 its a good answer
 
+
 测试一下从pycharm推到github中
+
+测试一下从bash推到github中
