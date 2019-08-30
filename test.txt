@@ -1,13 +1,2 @@
-﻿very good!
-
-only press git pull then git push
-
-its a good answer
-
-
-测试一下从pycharm推到github中 成功
-
-测试一下从bash推到github中 成功
-
-结束测试
-
+﻿https://mind-way.github.io/my_project/
+https://github.com/mind-way/my_project.git
