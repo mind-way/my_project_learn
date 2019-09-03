@@ -1,20 +1,27 @@
+# -*- coding:utf-8 -*-
+# @Author: guoyq
+# @Last Modified time: 2019-07-28
 # 安居客成都所有新楼盘信息爬取+存储+结巴分词+词云
+# 安居客成都楼盘网址：https://cd.fang.anjuke.com/loupan/all/
 import gevent
 from gevent import monkey
 monkey.patch_all()
-from gevent.queue import Queue
 import requests
-from bs4 import BeautifulSoup
-import time,random
 import openpyxl
-from openpyxl.drawing.image import Image
-from openpyxl import load_workbook
 import jieba
 import jieba.analyse
-from wordcloud import WordCloud,ImageColorGenerator
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image as Img   # from PIL import Image 中的Image或和 from openpyxl.drawing.image import Image 中的Image冲突！
+import time
+import random
+from bs4 import BeautifulSoup
+from openpyxl.drawing.image import Image
+from openpyxl import load_workbook
+from wordcloud import WordCloud, ImageColorGenerator
+from PIL import Image as Img   # from PIL import Image的Image或和 from openpyxl.drawing.image import Image的Image冲突！
+from gevent.queue import Queue
+
+
 '''
 一、本程序作用为爬取安居客网站中成都市所有的新楼盘信息，并对获取的信息进行处理，得出成都市各楼盘的分布情况，
     通过词云的方式直观显示，同时将楼盘基本信息和对用楼盘宣传照片存入excel，以便后续做其他分析；
@@ -24,6 +31,7 @@ from PIL import Image as Img   # from PIL import Image 中的Image或和 from op
 三、为了绕开安居客信息各种反爬手段，本程序从网上公开的代理网站获取代理IP，组成代理IP池，随机选取IP进行动态爬取，避免被封IP。
     程序的异常信息分爬虫分析，结巴分词和词云三部分存储为txt日志。
 '''
+
 
 # 一、代理IP获取、验证和选取
 def get_ip_list(url):
@@ -39,15 +47,18 @@ def get_ip_list(url):
         port = result.select('td')[2].text
         judge(ip, port)
 
+
 ip_list = []
+
+
 def judge(ip, port):
     # 判断获取的IP是否有效
     global ip_list
     proxy = {'http':ip+':'+port}
     try:
-        res = requests.get('https://www.baidu.com',proxies=proxy)
+        res = requests.get('https://www.baidu.com', proxies=proxy)
     except Exception:
-        print('该ip：' + ip + '无效')
+        print('该ip：'+ip+'无效')
         return False
     else:
         if 200 <= res.status_code < 300:
@@ -57,14 +68,16 @@ def judge(ip, port):
             print('该ip：' + ip + '无效')
             return False
 
+
 def get_random_ip():
     # 从ip_list中随机获取一个ip，因为代理IP有存活周期，所有此处不用将所有可用的代理IP存起来，即用即取即可，存起来也可以。
-    ip,port = random.choice(ip_list)
+    ip, port = random.choice(ip_list)
     result = judge(ip, port)
     if result:
         return ip + ':' + port
     else:
         ip_list.remove((ip, port))
+
 
 # 二、主爬虫部分，安居客信息爬取和存储
 def crawler():
@@ -74,26 +87,26 @@ def crawler():
     while not work.empty():
         url = work.get_nowait()
         header = work_h.get_nowait()
-        res = requests.get(url,headers=header,proxies=proxy)
-        print('请求状态%s'%res.status_code)
+        res = requests.get(url, headers=header, proxies=proxy)
+        print('请求状态%s' % res.status_code)
         if 200<= res.status_code <300:
-            html = BeautifulSoup(res.text,'html.parser')
+            html = BeautifulSoup(res.text, 'html.parser')
             # 提取数据
-            all_infos = html.find('div',class_='key-list imglazyload').find_all('div',class_='item-mod')
+            all_infos = html.find('div', class_='key-list imglazyload').find_all('div', class_='item-mod')
             for infos in all_infos:
                 try:
-                    build_name = infos.find('div',class_='infos').find('span',class_='items-name').text
-                    room_price = infos.find('a',class_='favor-pos').find('p').text
-                    build_addr = infos.find('div',class_='infos').find('a',class_='address').find('span',class_='list-map').text
-                    build_type = infos.find('div',class_='infos').find('div',class_='tag-panel').find('i',class_='status-icon wuyetp').text
-                    sale_state = infos.find('div',class_='infos').find('div',class_='tag-panel').find('i').text
-                    build_state =infos.find('div',class_='infos').find('div',class_='tag-panel').find('span').text
-                    room_area = infos.find('div',class_='infos').find('a',class_='huxing').text.strip().replace(' ','')
-                    picture = infos.find('a',class_='pic').find('img')['src']
-                    link = infos.find('div',class_='infos').find('a',class_='lp-name')['href']
+                    build_name = infos.find('div', class_='infos').find('span', class_='items-name').text
+                    room_price = infos.find('a', class_='favor-pos').find('p').text
+                    build_addr = infos.find('div', class_='infos').find('a', class_='address').find('span', class_='list-map').text
+                    build_type = infos.find('div', class_='infos').find('div', class_='tag-panel').find('i', class_='status-icon wuyetp').text
+                    sale_state = infos.find('div', class_='infos').find('div', class_='tag-panel').find('i').text
+                    build_state =infos.find('div', class_='infos').find('div', class_='tag-panel').find('span').text
+                    room_area = infos.find('div', class_='infos').find('a', class_='huxing').text.strip().replace(' ', '')
+                    picture = infos.find('a', class_='pic').find('img')['src']
+                    link = infos.find('div', class_='infos').find('a', class_='lp-name')['href']
                     # 输出数据
                     print('%s,楼盘名称:%s，房子价格:%s，地址:%s，建筑类型:%s，销售状态:%s，建筑状态:%s，房子面积:%s，楼盘图片:%s，楼盘链接:%s'
-                          %(N,build_name,room_price,build_addr,build_type,sale_state,build_state,room_area,picture,link))
+                          %(N, build_name, room_price, build_addr, build_type, sale_state, build_state, room_area, picture, link))
                     # 如果需要在excel中写入图片再下载写入，否则不下载图片
                     if wr_pic == 'y':
                         # 图片文件转化为二进制文件下载
@@ -101,27 +114,27 @@ def crawler():
                             myheader = {
                                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/66.0.3359.139 Safari/537.36'
                             }
-                            res_picture = requests.get(picture,headers=myheader,proxies=proxy)
+                            res_picture = requests.get(picture, headers=myheader, proxies=proxy)
                             pic = res_picture.content  # 图片的二进制数据
                             # 下载图片
-                            photo = open(r'E:\练习文件\图片\安居客楼盘信息\%s' % (picture[-53:].replace('/','-')), 'wb')
+                            photo = open(r'E:\练习文件\图片\安居客楼盘信息\%s' % (picture[-53:].replace('/', '-')), 'wb')
                             photo.write(pic)
                             # 获取pic的二进制内容
                             photo.close()
                             # 准备写入图片文件
                             time.sleep(9)
-                            img = Image(r'E:\练习文件\图片\安居客楼盘信息\%s' % (picture[-53:].replace('/','-')))
+                            img = Image(r'E:\练习文件\图片\安居客楼盘信息\%s' % (picture[-53:].replace('/', '-')))
                             # p = sheet.add_image(img)
                         except Exception as e:
                             print(e)
                             print('图片下载或写入excel可能出错，请检查！')
                             img = Image(r'E:\练习文件\图片\安居客楼盘信息\1.jpg')
                             err_time0 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-                            with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt','a',encoding='utf-8') as f_ana1:
+                            with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt', 'a', encoding='utf-8') as f_ana1:
                                 f_ana1.writelines('图片下载或写入excel报错：%s  %s\n' % (e, err_time0))
                         # 楼盘信息写入excel
                         try:
-                            rows = [build_name,room_price,build_addr,build_type,sale_state,build_state,room_area,picture,link,sheet1.add_image(img,'J%s'%(N+1))]
+                            rows = [build_name, room_price, build_addr, build_type, sale_state, build_state, room_area, picture, link, sheet1.add_image(img, 'J%s'%(N+1))]
                             sheet1.append(rows)
                             wb.save(r'E:\练习文件\安居客成都所有新楼盘信息.xlsx')
                             N += 1
@@ -129,11 +142,11 @@ def crawler():
                             print(e)
                             print('安居客信息写入Excel可能出错，请检查！')
                             err_time1 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-                            with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt','a',encoding='utf-8') as f_ana2:
+                            with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt', 'a', encoding='utf-8') as f_ana2:
                                 f_ana2.writelines('安居客信息写入excel报错：%s  %s\n' % (e, err_time1))
                     else:
                         try:
-                            rows = [build_name,room_price,build_addr,build_type,sale_state,build_state,room_area,picture,link,'/']
+                            rows = [build_name, room_price, build_addr, build_type, sale_state, build_state, room_area, picture, link, '/']
                             sheet1.append(rows)
                             wb.save(r'E:\练习文件\安居客成都所有新楼盘信息.xlsx')
                             N += 1
@@ -141,16 +154,17 @@ def crawler():
                             print(e)
                             print('安居客信息写入Excel可能出错，请检查！')
                             err_time2 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-                            with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt','a',encoding='utf-8') as f_ana3:
+                            with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt', 'a', encoding='utf-8') as f_ana3:
                                 f_ana3.writelines('安居客信息写入excel报错：%s  %s\n' % (e, err_time2))
                 except Exception as e:
                     print(e)
                     print('解析可能出错，请检查！')
-                    err_time3 = time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))
-                    with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt','a',encoding='utf-8') as f_ana4:
-                        f_ana4.writelines('url解析失败报错：%s  %s\n'%(e,err_time3))
+                    err_time3 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+                    with open(r'E:\练习文件\项目文件\python_log\spider_analysis.txt', 'a', encoding='utf-8') as f_ana4:
+                        f_ana4.writelines('url解析失败报错：%s  %s\n' % (e, err_time3))
         else:
             print('向安居客网站请求失败！')
+
 
 # 三、excel预处理+结巴分词+词云显示
 # 3.1 数据预处理
@@ -161,43 +175,50 @@ def read_xlsx(path_xlsx):
     sheet2 = wb.get_sheet_by_name('安居客新楼盘信息')
     return sheet2
 
-def write_txt(path_txt,sheet):
+
+def write_txt(path_txt, sheet):
     # 文件需要处理部分存储为txt文档，也可以直接赋值给变量，此处这么写的目的是避免大文件直接赋值到变量（可调整读取量）
-    with open(path_txt,'w',encoding='utf-8') as f:
+    with open(path_txt, 'w', encoding='utf-8') as f:
         for column in sheet['C']:         # 读取指定列
             f.writelines(str(column.value)+'\n')
             # print(column.value)
 
+
 def read_txt(path_txt):
     # 从txt中提取文本信息
-    with open(path_txt,'r',encoding='utf-8') as f2:
+    with open(path_txt, 'r', encoding='utf-8') as f2:
         content = f2.read()
     return content
+
 
 # 3.2 结巴分词部分
 def userdict(path_userdict):
     # 自定义词典
     jieba.load_userdict(path_userdict)
 
+
 def set_stop_words(path_stop_words):
     # 设置停用词
     jieba.analyse.set_stop_words(path_stop_words)
 
+
 def jieba_cut(content):
     # 精确模式
-    jb_cut = jieba.cut(content,cut_all=False)
+    jb_cut = jieba.cut(content, cut_all=False)
     return '/'.join(jb_cut)
 
-def write_extract(path_txt,content):
+
+def write_extract(path_txt, content):
     # 提取关键词并保存
-    with open(path_txt,'w',encoding='utf-8') as f3:
-        tags = jieba.analyse.extract_tags(content,topK=100,withWeight=True)
+    with open(path_txt, 'w', encoding='utf-8') as f3:
+        tags = jieba.analyse.extract_tags(content, topK=100, withWeight=True)
         keywords = {}
-        for v,n in tags:
+        for v, n in tags:
             keywords[v] = n
-            f3.writelines('%s:%s'%(v,n)+'\n')
-            print('%s:%s'%(v,n))
+            f3.writelines('%s:%s' % (v, n)+'\n')
+            print('%s:%s' % (v, n))
     return keywords
+
 
 # 3.3 背景图处理
 def np_img(path_img):
@@ -205,16 +226,17 @@ def np_img(path_img):
     bg_img = np.array(Img.open(path_img))
     return bg_img
 
+
 # 3.4 词云处理和显示
-def my_wordcloud(path_font,bg_img,keywords):
+def my_wordcloud(path_font, bg_img, keywords):
     # 词云处理和显示
     wordcloud = WordCloud(
         # 添加字体路径         # msyh.ttc(微软雅黑)/msyhl.ttc(微软雅黑-细)/msyhbd.ttc(微软雅黑-细)/simhei.ttf(黑体)
         font_path=path_font,   # simsun.ttc(宋体)/stxihei.ttf(华文细黑)/SIMLI.ttf(隶书)/stcaiyun.ttf(华文彩云)
         # 设置背景色，高宽
-        background_color='white',mask=bg_img,max_font_size=130,min_font_size=4).generate_from_frequencies(keywords)
+        background_color='white', mask=bg_img, max_font_size=130, min_font_size=4).generate_from_frequencies(keywords)
     image_colors = ImageColorGenerator(bg_img)
-    plt.imshow(wordcloud.recolor(color_func=image_colors),interpolation='bilinear')
+    plt.imshow(wordcloud.recolor(color_func=image_colors), interpolation='bilinear')
     plt.axis('off')
     plt.show()
 
@@ -295,7 +317,7 @@ if __name__ == "__main__":
             print(e)
             print('检查文件是否被打开，关闭文件重新处理')
             err_time4 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt','a',encoding='utf-8') as f_jieba1:
+            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt', 'a', encoding='utf-8') as f_jieba1:
                 f_jieba1.writelines('读取excel信息进行预处理时报错：%s  %s\n' % (e, err_time4))
             time.sleep(20)
             sheet = read_xlsx(path_xlsx)
@@ -306,7 +328,7 @@ if __name__ == "__main__":
             print(e)
             print('检查文件是否被打开，关闭文件重新处理')
             err_time5 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt','a',encoding='utf-8') as f_jieba2:
+            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt', 'a', encoding='utf-8') as f_jieba2:
                 f_jieba2.writelines('写入txt预处理信息报错：%s  %s\n' % (e, err_time5))
             time.sleep(20)
             write_txt(path_txt, sheet)
@@ -317,7 +339,7 @@ if __name__ == "__main__":
             print(e)
             print('检查文件是否被打开，关闭文件重新处理')
             err_time6 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt','a',encoding='utf-8') as f_jieba3:
+            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt', 'a', encoding='utf-8') as f_jieba3:
                 f_jieba3.writelines('读取写入的txt预处理信息报错：%s  %s\n' % (e, err_time6))
             time.sleep(20)
             content = read_txt(path_txt)
@@ -334,7 +356,7 @@ if __name__ == "__main__":
             print(e)
             print('检查文件是否被打开，关闭文件重新处理')
             err_time7 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt','a',encoding='utf-8') as f_jieba4:
+            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt', 'a', encoding='utf-8') as f_jieba4:
                 f_jieba4.writelines('用户字典和停用词加载报错：%s  %s\n' % (e, err_time7))
             time.sleep(20)
             userdict(path_userdict)
@@ -348,7 +370,7 @@ if __name__ == "__main__":
         except Exception as e:
             print('检查文件路径或文件是否被打开，关闭文件重新处理')
             err_time8 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt','a',encoding='utf-8') as f_jieba5:
+            with open(r'E:\练习文件\项目文件\python_log\jieba_analysis.txt', 'a', encoding='utf-8') as f_jieba5:
                 f_jieba5.writelines('结巴分词报错：%s  %s\n' % (e, err_time8))
             time.sleep(20)
             cut = jieba_cut(content)
@@ -364,7 +386,7 @@ if __name__ == "__main__":
             print(e)
             print('检查图片路径是否错误！')
             err_time9 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\cloud_analysis.txt','a',encoding='utf-8') as f_cloud1:
+            with open(r'E:\练习文件\项目文件\python_log\cloud_analysis.txt', 'a', encoding='utf-8') as f_cloud1:
                 f_cloud1.writelines('numpy背景图处理报错：%s  %s\n' % (e, err_time9))
             path_img = r'E:\练习文件\图片\词云用图\1.jpg'
             bg_img = np_img(path_img)
@@ -379,7 +401,7 @@ if __name__ == "__main__":
             print(e)
             print('词云图片生成失败，请检查错误！')
             err_time10 = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-            with open(r'E:\练习文件\项目文件\python_log\cloud_analysis.txt','a',encoding='utf-8') as f_cloud2:
+            with open(r'E:\练习文件\项目文件\python_log\cloud_analysis.txt', 'a', encoding='utf-8') as f_cloud2:
                 f_cloud2.writelines('词云生成报错：%s  %s\n' % (e, err_time10))
 
     else:
